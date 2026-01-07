@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login - Water Monitor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --primary: #667eea;
+            --primary-dark: #5a6fd8;
+            --gray-100: #f8f9fa;
+            --gray-200: #e9ecef;
+            --gray-600: #6c757d;
+            --gray-800: #343a40;
+            --border-radius: 0.75rem;
+            --shadow-sm: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            --shadow-md: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+            --transition: all 0.2s ease-in-out;
+        }
+
+        body { 
+            background: var(--primary-gradient);
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: moveBackground 20s linear infinite;
+            z-index: 0;
+        }
+
+        @keyframes moveBackground {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(50px, 50px); }
+        }
+
+        .auth-container { 
+            max-width: 440px;
+            width: 100%;
+            margin: 20px;
+            padding: 2.5rem;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-md);
+            position: relative;
+            z-index: 1;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .auth-container h2 {
+            color: var(--primary);
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .auth-container .subtitle {
+            color: var(--gray-600);
+            margin-bottom: 2rem;
+        }
+
+        .hidden { 
+            display: none !important; 
+        }
+
+        .loader-container {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 200px;
+            gap: 1rem;
+        }
+
+        .spinner-border {
+            width: 3rem;
+            height: 3rem;
+            border-width: 0.3rem;
+        }
+
+        .form-label {
+            font-weight: 600;
+            color: var(--gray-800);
+            margin-bottom: 0.5rem;
+        }
+
+        .form-control {
+            border: 2px solid var(--gray-200);
+            border-radius: var(--border-radius);
+            padding: 0.75rem 1rem;
+            transition: var(--transition);
+        }
+
+        .form-control:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.15);
+        }
+
+        .btn-primary {
+            background: var(--primary-gradient);
+            border: none;
+            border-radius: var(--border-radius);
+            padding: 0.85rem;
+            font-weight: 600;
+            transition: var(--transition);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: var(--gray-600);
+            border: none;
+            border-radius: var(--border-radius);
+            padding: 0.75rem;
+            font-weight: 600;
+            transition: var(--transition);
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .alert {
+            border-radius: var(--border-radius);
+            border: none;
+            padding: 1rem;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .alert-danger {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            text-align: center;
+            margin: 1.5rem 0;
+            color: var(--gray-600);
+        }
+
+        .divider::before,
+        .divider::after {
+            content: '';
+            flex: 1;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        .divider span {
+            padding: 0 1rem;
+        }
+
+        .icon-wrapper {
+            width: 60px;
+            height: 60px;
+            background: var(--primary-gradient);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.5rem;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .icon-wrapper::before {
+            content: '🔐';
+            font-size: 2rem;
+        }
+
+        @media (max-width: 576px) {
+            .auth-container {
+                padding: 2rem 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+   <div class="auth-container">
+    <div class="icon-wrapper"></div>
+    <h2 class="text-center">Admin Login</h2>
+    <p class="subtitle text-center">Access the water monitoring dashboard</p>
+
+    <div id="loader" class="loader-container">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="text-muted">Checking authentication...</p>
+    </div>
+
+    <div id="login-form-wrapper" class="hidden">
+        <div class="mb-3">
+            <label for="email" class="form-label">Email address</label>
+            <input type="email" class="form-control" id="email" placeholder="admin@example.com">
+        </div>
+
+        <div class="mb-3">
+            <label for="password" class="form-label">Password</label>
+            <input type="password" class="form-control" id="password" placeholder="Enter your password">
+        </div>
+
+        <button type="submit" class="btn btn-primary w-100 mb-3" id="login-button">Login</button>
+
+        <div id="login-error" class="alert alert-danger mt-3 hidden">An error occurred during login. Please try again.</div>
+
+        <div class="divider">
+            <span>OR</span>
+        </div>
+
+        <div class="text-center">
+            <a href="index.html" class="btn btn-secondary w-100">View Public Dashboard</a>
+        </div>
+    </div>
+</div>
+
+    <!-- Firebase Scripts -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<script>
+const firebaseConfig = {
+    apiKey: "AIzaSyDQL-6PMlYVED2I2KpYISiDaf4huUg9tZw",
+    authDomain: "thesis-1bda3.firebaseapp.com",
+    databaseURL: "https://thesis-1bda3-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "thesis-1bda3",
+    storageBucket: "thesis-1bda3.firebasestorage.app",
+    messagingSenderId: "509024706594",
+    appId: "1:509024706594:web:4823234418f6a1d9b66a7b"
+};
+
+// Initialize Firebase
+let auth;
+let database;
+try {
+    const app = firebase.initializeApp(firebaseConfig);
+    auth = firebase.auth();
+    database = firebase.database();
+    console.log('✅ Firebase initialized successfully');
+} catch (error) {
+    console.error('❌ Firebase initialization error:', error);
+    document.getElementById('loader').innerHTML = `
+        <div class="alert alert-danger">
+            <strong>Error:</strong> Failed to initialize Firebase. Please refresh the page.
+        </div>
+    `;
+}
+
+// FIXED: Enhanced admin check with better error handling
+async function checkAdminStatus(user) {
+    try {
+        console.log('🔍 Checking admin status for:', user.email);
+        
+        // Check database for admin status
+        const adminUserSnapshot = await database.ref(`adminUsers/${user.uid}`).once('value');
+        const isAdmin = adminUserSnapshot.exists() && adminUserSnapshot.val().isAdmin === true;
+        
+        console.log('📊 Database admin check result:', isAdmin);
+        
+        return isAdmin;
+    } catch (error) {
+        console.error('❌ Error checking admin status:', error);
+        return false;
+    }
+}
+
+// FIXED: First time admin setup with better mobile handling
+async function handleFirstTimeAdminSetup(user) {
+    try {
+        console.log('🔄 Checking admin system status...');
+        
+        // Check if any admin users exist
+        const adminUsersSnapshot = await database.ref('adminUsers').once('value');
+        const hasExistingAdmins = adminUsersSnapshot.exists() && Object.keys(adminUsersSnapshot.val() || {}).length > 0;
+        
+        if (!hasExistingAdmins) {
+            console.log('👑 No existing admin users found. Setting up first admin...');
+            
+            // Use a more mobile-friendly approach than confirm()
+            const shouldCreateAdmin = window.confirm(
+                'No administrator accounts found.\n\n' +
+                'Would you like to create the first admin account with your current email?\n\n' +
+                `Email: ${user.email}\n\n` +
+                'This will grant you full admin privileges.'
+            );
+            
+            if (shouldCreateAdmin) {
+                // Create the first admin user
+                await database.ref(`adminUsers/${user.uid}`).set({
+                    email: user.email,
+                    createdAt: new Date().toISOString(),
+                    addedBy: 'first-admin-setup',
+                    isAdmin: true,
+                    isFirstAdmin: true
+                });
+                
+                console.log('✅ First admin user created!');
+                return true;
+            } else {
+                console.log('❌ User declined admin creation');
+                return false;
+            }
+        }
+        
+        return false;
+    } catch (error) {
+        console.error('❌ Error in admin setup:', error);
+        return false;
+    }
+}
+
+// FIXED: Enhanced admin check with setup capability
+async function checkAdminStatusWithSetup(user) {
+    // First, check if user is already admin
+    const isAdmin = await checkAdminStatus(user);
+    
+    if (isAdmin) {
+        return true;
+    }
+    
+    // If not admin, check if we can set them up as first admin
+    const setupResult = await handleFirstTimeAdminSetup(user);
+    
+    if (setupResult) {
+        // Setup was successful, check admin status again
+        return await checkAdminStatus(user);
+    }
+    
+    return false;
+}
+
+// FIXED: Main authentication handler with mobile-specific fixes
+document.addEventListener('DOMContentLoaded', () => {
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+    const loginButton = document.getElementById('login-button');
+    const loginError = document.getElementById('login-error');
+    const loader = document.getElementById('loader');
+    const loginFormWrapper = document.getElementById('login-form-wrapper');
+
+    console.log('📄 Admin login page loaded');
+
+    // FIXED: Better mobile session handling
+    let isProcessing = false;
+    let authChecked = false;
+
+    // FIXED: Enhanced auth state handler with mobile optimization
+    const authStateHandler = async (user) => {
+        // Prevent multiple simultaneous auth state processing
+        if (isProcessing) {
+            console.log('⏳ Auth state change already processing, skipping...');
+            return;
+        }
+
+        isProcessing = true;
+        console.log('🔄 Auth state changed:', user ? user.email : 'No user');
+        
+        // Hide loader after a brief delay for better UX
+        setTimeout(() => {
+            if (loader) loader.classList.add('hidden');
+        }, 500);
+
+        if (user) {
+            console.log('👤 User signed in:', user.email);
+            
+            try {
+                // FIXED: Use enhanced admin check with setup capability
+                const isAdmin = await checkAdminStatusWithSetup(user);
+                
+                console.log('✅ Final admin check result:', isAdmin);
+                
+                if (isAdmin) {
+                    console.log('✅ Admin verified - redirecting to dashboard');
+                    authChecked = true;
+                    
+                    // FIXED: Add delay for mobile stability
+                    setTimeout(() => {
+                        window.location.href = 'admin-dashboard.html';
+                    }, 1000);
+                } else {
+                    console.log('⛔ User does not have admin privileges');
+                    
+                    // FIXED: Don't auto-signout, let user see the message
+                    if (loginFormWrapper) loginFormWrapper.classList.remove('hidden');
+                    if (loginError) {
+                        loginError.textContent = 'You do not have admin privileges. Please contact an administrator.';
+                        loginError.classList.remove('hidden');
+                    }
+                    
+                    // FIXED: Clear any existing redirect attempts
+                    authChecked = true;
+                }
+            } catch (error) {
+                console.error('❌ Error checking admin status:', error);
+                if (loginFormWrapper) loginFormWrapper.classList.remove('hidden');
+                if (loginError) {
+                    loginError.textContent = 'Error verifying admin status. Please try again.';
+                    loginError.classList.remove('hidden');
+                }
+            }
+        } else {
+            console.log('🔓 No user signed in - showing login form');
+            if (loginFormWrapper) loginFormWrapper.classList.remove('hidden');
+            if (loginError) loginError.classList.add('hidden');
+            authChecked = true;
+        }
+        
+        isProcessing = false;
+    };
+
+    // FIXED: Set up auth state listener with mobile optimization
+    auth.onAuthStateChanged(authStateHandler);
+
+    // FIXED: Fallback - if auth state doesn't trigger within 3 seconds, show login form
+    setTimeout(() => {
+        if (!authChecked && loader && !loader.classList.contains('hidden')) {
+            console.log('⏰ Auth timeout - showing login form');
+            loader.classList.add('hidden');
+            if (loginFormWrapper) loginFormWrapper.classList.remove('hidden');
+        }
+    }, 3000);
+
+    // FIXED: Enhanced login handler with mobile optimization
+    if (loginButton) {
+        loginButton.addEventListener('click', async (e) => {
+            e.preventDefault();
+            
+            if (isProcessing) {
+                console.log('⏳ Login already in progress...');
+                return;
+            }
+            
+            const email = emailInput.value.trim();
+            const password = passwordInput.value.trim();
+
+            console.log('🔐 Login attempt for:', email);
+
+            if (!email || !password) {
+                if (loginError) {
+                    loginError.textContent = 'Please enter both email and password.';
+                    loginError.classList.remove('hidden');
+                }
+                return;
+            }
+
+            isProcessing = true;
+            loginButton.disabled = true;
+            loginButton.textContent = 'Logging in...';
+            if (loginError) loginError.classList.add('hidden');
+
+            try {
+                const userCredential = await auth.signInWithEmailAndPassword(email, password);
+                console.log('✅ Login successful:', userCredential.user.email);
+                
+                // FIXED: Use enhanced admin check with setup capability
+                const isAdmin = await checkAdminStatusWithSetup(userCredential.user);
+                
+                console.log('🔍 Final admin check result:', isAdmin);
+                
+                if (isAdmin) {
+                    console.log('✅ Admin access granted - redirecting');
+                    authChecked = true;
+                    
+                    // FIXED: Longer delay for mobile stability
+                    setTimeout(() => {
+                        window.location.href = 'admin-dashboard.html';
+                    }, 1500);
+                } else {
+                    console.log('⛔ No admin privileges found');
+                    
+                    // FIXED: Don't sign out automatically on mobile
+                    if (loginError) {
+                        loginError.textContent = 'You do not have admin privileges. Please contact an administrator to grant you access.';
+                        loginError.classList.remove('hidden');
+                    }
+                    
+                    loginButton.disabled = false;
+                    loginButton.textContent = 'Login';
+                    isProcessing = false;
+                }
+            } catch (error) {
+                console.error('❌ Login error:', error.code, error.message);
+                
+                loginButton.disabled = false;
+                loginButton.textContent = 'Login';
+                isProcessing = false;
+
+                let message = 'An unexpected error occurred. Please try again.';
+
+                switch (error.code) {
+                    case 'auth/wrong-password':
+                        message = 'The password you entered is incorrect.';
+                        break;
+                    case 'auth/user-not-found':
+                        message = 'No account found with that email address.';
+                        break;
+                    case 'auth/invalid-email':
+                        message = 'The email address format is invalid.';
+                        break;
+                    case 'auth/user-disabled':
+                        message = 'This account has been disabled.';
+                        break;
+                    case 'auth/too-many-requests':
+                        message = 'Too many failed login attempts. Try again later.';
+                        break;
+                    case 'auth/invalid-credential':
+                        message = 'Invalid email or password. Please check your credentials.';
+                        break;
+                    default:
+                        message = `Login failed: ${error.message}`;
+                        break;
+                }
+
+                if (loginError) {
+                    loginError.textContent = message;
+                    loginError.classList.remove('hidden');
+                }
+            }
+        });
+    }
+
+    // FIXED: Allow Enter key to submit (mobile keyboard)
+    [emailInput, passwordInput].forEach(input => {
+        if (input) {
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !isProcessing) {
+                    loginButton.click();
+                }
+            });
+        }
+    });
+
+    // FIXED: Clear any stuck processing state on page visibility change (mobile specific)
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            // Reset processing state when user returns to the tab
+            isProcessing = false;
+        }
+    });
+});
+</script>
+</body>
+</html>
