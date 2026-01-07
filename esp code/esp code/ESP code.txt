@@ -1,0 +1,426 @@
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include "CQRobotTDS.h"
+#include <time.h>
+#include <HTTPClient.h>
+#include <Preferences.h>
+
+// ========== UNIT CONFIGURATION ==========
+#define UNIT_NUMBER 2      // This is UNIT 2
+#define INTERVAL_MINUTES 30 // Reading interval in minutes
+// ========================================
+
+const char* ssid = "4G-UFI-7630";
+const char* password = "1234567890";
+const String FIREBASE_HOST = "https://thesis-1bda3-default-rtdb.asia-southeast1.firebasedatabase.app";
+
+#define TurbidityPin 32
+#define PH_SENSOR_PIN 35
+const int oneWireBus = 33;
+#define TDS_POWER_PIN 14
+#define PH_POWER_PIN 27
+#define TURB_POWER_PIN 26
+#define TEMP_POWER_PIN 13
+#define LCD_BACKLIGHT 25
+
+OneWire oneWire(oneWireBus);
+DallasTemperature sensors(&oneWire);
+CQRobotTDS tds(36);
+LiquidCrystal_I2C lcd(0x27, 20, 4);
+Preferences preferences;
+
+float voltage = 0;
+int analogValue = 0;
+float turbidity = 0;
+float calibration_value = 21.34 + 1.48;
+unsigned long avgval;
+int buffer_arr[10], PHtemp;
+float ph_act;
+float temperatureC = 0;
+float tdsValue = 0;
+bool ntpSyncSuccess = false;
+
+void printDetailedNetworkInfo() {
+  Serial.println("\n========== DETAILED NETWORK INFO ==========");
+  Serial.print("WiFi Status: ");
+  Serial.println(WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected");
+  Serial.print("SSID: ");
+  Serial.println(WiFi.SSID());
+  Serial.print("BSSID: ");
+  Serial.println(WiFi.BSSIDstr());
+  Serial.print("Channel: ");
+  Serial.println(WiFi.channel());
+  Serial.print("RSSI: ");
+  Serial.print(WiFi.RSSI());
+  Serial.println(" dBm");
+  
+  Serial.print("Local IP: ");
+  Serial.println(WiFi.localIP());
+  Serial.print("Subnet Mask: ");
+  Serial.println(WiFi.subnetMask());
+  Serial.print("Gateway IP: ");
+  Serial.println(WiFi.gatewayIP());
+  Serial.print("DNS 1: ");
+  Serial.println(WiFi.dnsIP(0));
+  Serial.print("DNS 2: ");
+  Serial.println(WiFi.dnsIP(1));
+  
+  Serial.print("MAC Address: ");
+  Serial.println(WiFi.macAddress());
+  Serial.println("===========================================\n");
+}
+
+void connectWiFi() {
+  Serial.println("\n--- Attempting WiFi Connection ---");
+  Serial.print("📍 This is UNIT ");
+  Serial.println(UNIT_NUMBER);
+  
+  WiFi.mode(WIFI_OFF);
+  delay(1000);
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+  WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
+  WiFi.begin(ssid, password);
+  
+  Serial.print("Connecting");
+  int attempt = 0;
+  while (WiFi.status() != WL_CONNECTED && attempt < 60) {
+    delay(500);
+    Serial.print(".");
+    attempt++;
+    
+    if (attempt % 20 == 0 && attempt < 60) {
+      Serial.println("\n⟳ Retrying connection...");
+      WiFi.disconnect();
+      delay(1000);
+      WiFi.begin(ssid, password);
+    }
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\n✅ WiFi Connected!");
+    printDetailedNetworkInfo();
+    
+    Serial.println("⏳ Waiting for network stack to stabilize (10 seconds)...");
+    for (int i = 0; i < 10; i++) {
+      delay(1000);
+      Serial.print(".");
+    }
+    Serial.println(" Done!");
+  } else {
+    Serial.println("\n❌ WiFi connection failed!");
+  }
+}
+
+bool runNetworkDiagnostics() {
+  Serial.println("\n========== NETWORK DIAGNOSTICS ==========");
+  
+  HTTPClient http;
+  WiFiClient client;
+  http.begin(client, "http://www.google.com");
+  http.setTimeout(10000);
+  int httpCode = http.GET();
+  http.end();
+  
+  if (httpCode == 200 || httpCode == 301 || httpCode == 302) {
+    Serial.println("✅ HTTP connectivity OK");
+  } else {
+    Serial.println("❌ HTTP connectivity failed");
+    return false;
+  }
+  
+  String fbHost = "thesis-1bda3-default-rtdb.asia-southeast1.firebasedatabase.app";
+  IPAddress fbIP;
+  if (!WiFi.hostByName(fbHost.c_str(), fbIP)) {
+    Serial.println("❌ Cannot resolve Firebase");
+    return false;
+  }
+  Serial.println("✅ Firebase DNS resolved");
+  
+  WiFiClientSecure fbClient;
+  fbClient.setInsecure();
+  fbClient.setTimeout(15000);
+  
+  if (!fbClient.connect(fbHost.c_str(), 443)) {
+    Serial.println("❌ Cannot connect to Firebase");
+    fbClient.stop();
+    return false;
+  }
+  fbClient.stop();
+  Serial.println("✅ Firebase HTTPS connection OK");
+  Serial.println("==========================================");
+  return true;
+}
+
+void readSensors() {
+  sensors.requestTemperatures();
+  temperatureC = sensors.getTempCByIndex(0);
+  
+  float TDStemp = 20.0;
+  tdsValue = tds.update(TDStemp);
+  
+  analogValue = analogRead(TurbidityPin);
+  voltage = analogValue * (3.3 / 4095);
+  turbidity = (int)(((analogValue - 2010) * 100) / (1888 - 2010));
+  
+  for (int i = 0; i < 10; i++)
+    buffer_arr[i] = analogRead(PH_SENSOR_PIN);
+    
+  for (int i = 0; i < 9; i++) {
+    for (int j = i + 1; j < 10; j++) {
+      if (buffer_arr[i] > buffer_arr[j]) {
+        PHtemp = buffer_arr[i];
+        buffer_arr[i] = buffer_arr[j];
+        buffer_arr[j] = PHtemp;
+      }
+    }
+  }
+  
+  avgval = 0;
+  for (int i = 2; i < 8; i++)
+    avgval += buffer_arr[i];
+    
+  float volt = (float)avgval * 3.3 / 4095.0 / 6;
+  ph_act = -5.70 * volt + calibration_value;
+}
+
+void sendToFirebaseWithTimestamp() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi Disconnected, skipping upload.");
+    return;
+  }
+  
+  Serial.println("\n--- Pre-Upload Network Check ---");
+  if (!runNetworkDiagnostics()) {
+    Serial.println("⚠️ Network diagnostics failed. Skipping Firebase upload.");
+    return;
+  }
+  
+  String timestamp;
+  struct tm timeinfo;
+  if (ntpSyncSuccess && getLocalTime(&timeinfo)) {
+    char timeStr[20];
+    strftime(timeStr, sizeof(timeStr), "%Y-%m-%d_%H-%M", &timeinfo);
+    timestamp = String(timeStr);
+    Serial.println("Using NTP timestamp: " + timestamp);
+  } else {
+    preferences.begin("water-monitor", false);
+    unsigned long counter = preferences.getULong("counter", 0);
+    counter++;
+    preferences.putULong("counter", counter);
+    preferences.end();
+    timestamp = "reading_" + String(counter);
+    Serial.println("Using sequential ID: " + timestamp);
+  }
+  
+  // ========== FIREBASE PATH FOR UNIT 2 ==========
+  String url = FIREBASE_HOST + "/unit_2/" + timestamp + ".json";
+  
+  WiFiClientSecure client;
+  client.setInsecure();
+  
+  HTTPClient http;
+  http.begin(client, url);
+  http.addHeader("Content-Type", "application/json");
+  http.setTimeout(15000);
+  
+  // ========== JSON DATA FOR UNIT 2 ==========
+  String json = "{";
+  json += "\"temperature_2\": " + String(temperatureC, 2) + ",";
+  json += "\"turbidity_2\": " + String(turbidity) + ",";
+  json += "\"ph_2\": " + String(ph_act, 2) + ",";
+  json += "\"tds_2\": " + String(tdsValue, 0) + ",";
+  json += "\"uptime_ms\": " + String(millis());
+  json += "}";
+  
+  Serial.println("\n--- Attempting Firebase Upload ---");
+  Serial.println("UNIT: 2");
+  Serial.println("URL: " + url);
+  Serial.println("Data: " + json);
+  
+  int attempts = 0;
+  int httpResponseCode = -1;
+  
+  while (attempts < 3 && httpResponseCode <= 0) {
+    Serial.print("Attempt ");
+    Serial.print(attempts + 1);
+    Serial.print("/3... ");
+    
+    httpResponseCode = http.PATCH(json);
+    
+    if (httpResponseCode > 0) {
+      Serial.print("✅ SUCCESS! Response code: ");
+      Serial.println(httpResponseCode);
+      String response = http.getString();
+      Serial.println("Firebase response: " + response);
+      break;
+    } else {
+      Serial.print("❌ FAILED (Error code: ");
+      Serial.print(httpResponseCode);
+      Serial.println(")");
+      
+      if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("WiFi connection lost during upload");
+        break;
+      }
+      
+      if (attempts < 2) {
+        Serial.println("Waiting 5s before retry...");
+        delay(5000);
+      }
+      attempts++;
+    }
+  }
+  
+  if (httpResponseCode <= 0) {
+    Serial.println("\n❌ Upload failed after 3 attempts");
+  }
+  
+  http.end();
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+  Serial.println("\n\n=== ESP32 Water Monitor - UNIT 2 (Every " + String(INTERVAL_MINUTES) + " min) ===\n");
+  
+  analogReadResolution(12);
+  
+  pinMode(TDS_POWER_PIN, OUTPUT);
+  pinMode(PH_POWER_PIN, OUTPUT);
+  pinMode(TURB_POWER_PIN, OUTPUT);
+  pinMode(TEMP_POWER_PIN, OUTPUT);
+  pinMode(LCD_BACKLIGHT, OUTPUT);
+  
+  digitalWrite(TDS_POWER_PIN, HIGH);
+  digitalWrite(PH_POWER_PIN, HIGH);
+  digitalWrite(TURB_POWER_PIN, HIGH);
+  digitalWrite(TEMP_POWER_PIN, HIGH);
+  digitalWrite(LCD_BACKLIGHT, HIGH);
+  
+  connectWiFi();
+  
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("\n❌ Cannot proceed without WiFi. Going to sleep.");
+    esp_deep_sleep_start();
+  }
+  
+  Serial.println("\n--- NTP Time Sync (10s timeout) ---");
+  configTime(8 * 3600, 0, "time.google.com", "pool.ntp.org", "asia.pool.ntp.org");
+  struct tm timeinfo;
+  int ntpTimeout = 0;
+  
+  while (!getLocalTime(&timeinfo) && ntpTimeout < 10) {
+    Serial.print(".");
+    delay(1000);
+    ntpTimeout++;
+  }
+  
+  if (getLocalTime(&timeinfo)) {
+    ntpSyncSuccess = true;
+    Serial.println("\n✅ NTP sync successful!");
+    char timeStr[30];
+    strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
+    Serial.println("Current time: " + String(timeStr));
+  } else {
+    ntpSyncSuccess = false;
+    Serial.println("\n❌ NTP sync failed — using sequential counter.");
+  }
+  
+  sensors.begin();
+  Wire.begin(21, 22);
+  lcd.init();
+  lcd.backlight();
+  
+  bool shouldRun = true;
+  
+  if (ntpSyncSuccess) {
+    getLocalTime(&timeinfo);
+    if (timeinfo.tm_min % INTERVAL_MINUTES != 0) {
+      shouldRun = false;
+      Serial.print("\n⏭️ Not scheduled minute (interval: ");
+      Serial.print(INTERVAL_MINUTES);
+      Serial.println(" min). Skipping sensor read.");
+    }
+  }
+  
+  if (shouldRun) {
+    Serial.println("\n--- Starting 2-minute sensor warm-up ---");
+    unsigned long warmupStart = millis();
+    
+    while (millis() - warmupStart < 120000) {
+      readSensors();
+      
+      lcd.setCursor(0, 0);
+      lcd.print("Temp: ");
+      lcd.print(temperatureC);
+      lcd.print((char)223);
+      lcd.print("C ");
+      
+      lcd.setCursor(0, 1);
+      lcd.print("TDS: ");
+      lcd.print(tdsValue, 0);
+      lcd.print("ppm ");
+      
+      lcd.setCursor(0, 2);
+      lcd.print("Turbidity: ");
+      lcd.print(turbidity);
+      lcd.print(" ");
+      
+      lcd.setCursor(0, 3);
+      lcd.print("pH: ");
+      lcd.print(ph_act);
+      lcd.print(" ");
+      
+      delay(3000);
+    }
+    
+    Serial.println("✅ Warm-up complete");
+    Serial.println("\n--- Final Sensor Readings ---");
+    Serial.print("Temperature: "); Serial.print(temperatureC); Serial.println("°C");
+    Serial.print("TDS: "); Serial.print(tdsValue); Serial.println(" ppm");
+    Serial.print("Turbidity: "); Serial.println(turbidity);
+    Serial.print("pH: "); Serial.println(ph_act);
+    
+    sendToFirebaseWithTimestamp();
+    delay(3000);
+  }
+  
+  Serial.println("\n--- Powering down sensors and LCD ---");
+  lcd.noBacklight();
+  digitalWrite(LCD_BACKLIGHT, LOW);
+  digitalWrite(TDS_POWER_PIN, LOW);
+  digitalWrite(PH_POWER_PIN, LOW);
+  digitalWrite(TURB_POWER_PIN, LOW);
+  digitalWrite(TEMP_POWER_PIN, LOW);
+  
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+  
+  uint64_t sleepTime = INTERVAL_MINUTES * 60 * 1000000ULL;
+  
+  if (ntpSyncSuccess && getLocalTime(&timeinfo)) {
+    int remainder = timeinfo.tm_min % INTERVAL_MINUTES;
+    int nextScheduledMin = timeinfo.tm_min + (INTERVAL_MINUTES - remainder);
+    if (nextScheduledMin >= 60) nextScheduledMin -= 60;
+    int secondsUntilNext = ((nextScheduledMin - timeinfo.tm_min + 60) % 60) * 60 - timeinfo.tm_sec;
+    sleepTime = (uint64_t)secondsUntilNext * 1000000ULL;
+  }
+  
+  Serial.print("💤 Sleeping for ");
+  Serial.print(sleepTime / 1000000);
+  Serial.print(" seconds (");
+  Serial.print(sleepTime / 60000000);
+  Serial.println(" minutes)");
+  
+  esp_sleep_enable_timer_wakeup(sleepTime);
+  
+  delay(100);
+  esp_deep_sleep_start();
+}
+
+void loop() {}
